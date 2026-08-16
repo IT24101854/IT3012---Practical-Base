@@ -2,6 +2,9 @@
 import random
 import tkinter as tk
 
+DIRECTION_CW = ['Up', 'Right', 'Down', 'Left']
+FACING_DELTA = {'Up': (0, 1), 'Down': (0, -1), 'Left': (-1, 0), 'Right': (1, 0)}
+
 
 class VisualGridHuntGame:
     """A flexible Pacman-style grid environment with support for configurable opponents and larger scales."""
@@ -49,12 +52,15 @@ class VisualGridHuntGame:
         self.collision = False
 
     def get_percept(self) -> dict:
+        ahead = self._cell_ahead()
+        wall_ahead = (not self._in_bound(ahead)) or (ahead in self.walls)
+        food_here = tuple(self.agent_pos) in self.food_positions
+        trap_here = tuple(self.agent_pos) in self.toxic_traps
         return {
-            'agent_pos': list(self.agent_pos),
-            'opponent_positions': [list(op) for op in self.opponents],
-            'smells_food': tuple(self.agent_pos) in self.food_positions,
-            'hit_wall': tuple(self.agent_pos) in self.walls,
-            'collision': self.collision,
+            'wall_ahead': wall_ahead,
+            'food_here': food_here,
+            'trap_here': trap_here,
+            'facing': self.facing,
             'score': self.score,
             'remaining_food': len(self.food_positions)
         }
@@ -105,6 +111,52 @@ class VisualGridHuntGame:
     def is_done(self) -> bool:
         return len(self.food_positions) == 0 or self.steps >= 60 or self.collision
 
+#Simple Reflex Agent
+class SimpleReflexAgent:
+    def sense_and_act(self, percept):
+        if percept['food_here']:
+            return 'Suck'
+        elif percept['wall_ahead']:
+            return 'TurnLeft'
+        else:
+            return 'MoveForward'
+
+class ModelBasedAgent:
+    def __init__(self):
+        self.facing = 'Right'
+        self.believed_pos = (0, 0)
+        self.visited_cells = {(0, 0)}
+        self.last_action = None
+
+    def _cell_ahead(self):
+        dx, dy = FACING_DELTA[self.facing]
+        return (self.believed_pos[0] + dx, self.believed_pos[1] + dy)
+
+    def sense_and_act(self, percept: dict) -> str:
+        self.facing = percept['facing']
+        cell_ahead = self._cell_ahead()
+
+        if percept['food_here']:
+            action = 'Suck'
+
+        elif percept['wall_ahead']:
+            if self.last_action == 'TurnLeft':
+                action = 'TurnRight'
+            else:
+                action = 'TurnLeft'
+
+        elif cell_ahead in self.visited_cells:
+            action = 'TurnRight'
+
+        else:
+            action = 'MoveForward'
+
+        if action == 'MoveForward':
+            self.believed_pos = cell_ahead
+            self.visited_cells.add(self.believed_pos)
+
+        self.last_action = action
+        return action
 
 class GridGameGUI:
     """Tkinter wrapper that dynamically scales cell sizes to keep larger grids on screen."""
