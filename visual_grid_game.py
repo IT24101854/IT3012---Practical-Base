@@ -1,11 +1,10 @@
 # visual_grid_game.py
 import random
 import tkinter as tk
+from agent import SearchAgent
 
 DIRECTION_CW = ['Up', 'Right', 'Down', 'Left']
 FACING_DELTA = {'Up': (0, 1), 'Down': (0, -1), 'Left': (-1, 0), 'Right': (1, 0)}
-
-
 class VisualGridHuntGame:
     """A flexible Pacman-style grid environment with support for configurable opponents and larger scales."""
 
@@ -52,17 +51,25 @@ class VisualGridHuntGame:
         self.collision = False
 
     def get_percept(self) -> dict:
-        ahead = self._cell_ahead()
-        wall_ahead = (not self._in_bound(ahead)) or (ahead in self.walls)
+        current_position = tuple(self.agent_pos)
+        #ahead = self._cell_ahead()
+        #wall_ahead = (not self._in_bound(ahead)) or (ahead in self.walls)
         food_here = tuple(self.agent_pos) in self.food_positions
         trap_here = tuple(self.agent_pos) in self.toxic_traps
+
         return {
-            'wall_ahead': wall_ahead,
+            #'wall_ahead': wall_ahead,
             'food_here': food_here,
             'trap_here': trap_here,
-            'facing': self.facing,
+            #'facing': self.facing,
             'score': self.score,
-            'remaining_food': len(self.food_positions)
+
+            # Information needed by search algorithms
+            'agent_pos': tuple(self.agent_pos),
+            'remaining_food': set(self.food_positions),
+            'walls': set(self.walls),
+            'traps': set(self.toxic_traps),
+            'grid_size': (self.width, self.height)
         }
 
     def execute_action(self, action: str):
@@ -167,6 +174,7 @@ class GridGameGUI:
 
         self.env = VisualGridHuntGame(width=width, height=height, num_food=num_food, num_opponents=num_opponents,
                                       custom_walls=walls)
+        self.agent = SearchAgent()
 
         # Dynamically calculate cell size so the total canvas fits nicely within a 600x600 window ceiling
         max_canvas_dim = 600
@@ -218,15 +226,15 @@ class GridGameGUI:
             y1 = (self.env.height - 1 - ty) * self.cell_size + offset
 
             self.canvas.create_rectangle(
-                x1, y1, x1 + self.cell_size * 0.5, y1 + self.cell_size * 0.5, fill="#800080", outline=""#d97706""
+                x1, y1, x1 + self.cell_size * 0.5, y1 + self.cell_size * 0.5, fill="#800080", outline="#d97706"
             )
 
         for ox, oy in self.env.opponents:
             offset = self.cell_size * 0.2
             x1 = ox * self.cell_size + offset
             y1 = (self.env.height - 1 - oy) * self.cell_size + offset
-            self.canvas.create_rectangle(x1, y1, x1 + self.cell_size * 0.6, y1 + self.cell_size * 0.6, fill="#990000",
-                                         outline="#7a0000")
+            self.canvas.create_rectangle(x1, y1, x1 + self.cell_size * 0.6, y1 + self.cell_size * 0.6, fill="#800080",
+                                         outline="#d97706")
 
         ax, ay = self.env.agent_pos
         offset = self.cell_size * 0.15
@@ -236,23 +244,81 @@ class GridGameGUI:
                                 outline="#1e3a8a")
 
     def run_loop(self):
+
         self.btn.config(state="disabled")
 
         def step():
-            if not self.env.is_done():
-                action = random.choice(['Up', 'Down', 'Left', 'Right'])
-                self.env.execute_action(action)
 
-                self.draw_grid()
-                self.label.config(text=f"Score: {self.env.score} | Steps: {self.env.steps} | Action: {action}")
-                self.root.after(250, step)
+            if not self.env.is_done():
+
+                # =============================================
+                # 1. Get information about the environment
+                # =============================================
+
+                percept = self.env.get_percept()
+
+                # =============================================
+                # 2. Let SearchAgent / A* choose an action
+                # =============================================
+
+                action = self.agent.sense_and_act(percept)
+
+                # =============================================
+                # 3. Execute the action
+                # =============================================
+
+                if action is not None:
+
+                    self.env.execute_action(action)
+
+                    # Update the GUI
+                    self.draw_grid()
+
+                    self.label.config(
+                        text=
+                        f"Score: {self.env.score} | "
+                        f"Steps: {self.env.steps} | "
+                        f"Action: {action}"
+                    )
+
+                    # Continue simulation
+                    self.root.after(250, step)
+
+                else:
+
+                    # A* could not find a safe path
+                    self.draw_grid()
+
+                    self.label.config(
+                        text=
+                        f"No safe path found | "
+                        f"Score: {self.env.score} | "
+                        f"Steps: {self.env.steps}"
+                    )
+
+                    self.btn.config(state="normal")
+
             else:
-                end_text = f"Collision! Game Over! Final Score: {self.env.score}" if self.env.collision else f"Finished! Final Score: {self.env.score}"
+
+                if self.env.collision:
+
+                    end_text = (
+                        f"Collision! Game Over! "
+                        f"Final Score: {self.env.score}"
+                    )
+
+                else:
+
+                    end_text = (
+                        f"Finished! "
+                        f"Final Score: {self.env.score}"
+                    )
+
                 self.label.config(text=end_text)
+
                 self.btn.config(state="normal")
 
         step()
-
 
 if __name__ == "__main__":
     root = tk.Tk()

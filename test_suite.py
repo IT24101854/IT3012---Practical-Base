@@ -35,7 +35,7 @@ class TestPractical1And2_ReflexAgents(unittest.TestCase):
         percept = {'wall_ahead': True, 'food_here': False}
 
         action_1 = self.model_agent.sense_and_act(percept)
-        action_2 = self.model_agent.sense_and_act(percept)
+        SearchAgentaction_2 = self.model_agent.sense_and_act(percept)
 
         # A simple reflex agent would return the exact same action twice.
         # A model-based agent should remember the previous failure and try a DIFFERENT action.
